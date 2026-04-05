@@ -30,6 +30,34 @@
             "-DOPUS_INSTALL_CMAKE_CONFIG_MODULE=ON" # nixpkgs libopus doesn't do this?
           ];
         };
+        imgui = pkgs.imgui.overrideAttrs (final: prev: rec {
+          version = "1.91.9b";
+          src = pkgs.fetchFromGitHub {
+            owner = "ocornut";
+            repo = "imgui";
+            tag = "v${version}";
+            hash = "sha256-dkukDP0HD8CHC2ds0kmqy7KiGIh4148hMCyA1QF3IMo=";
+          };
+
+          propagatedBuildInputs = with pkgs; (prev.propagatedBuildInputs or []) ++ [
+            sdl3
+            freetype
+          ];
+
+          preBuild = ''
+            addToSearchPath CMAKE_PREFIX_PATH ${pkgs.freetype.dev}
+          '';
+
+          cmakeFlags = [
+            "-DIMGUI_FREETYPE=ON"
+            "-DIMGUI_BUILD_SDL3_BINDING=ON"
+            "-DIMGUI_BUILD_OPENGL3_BINDING=ON"
+          ];
+
+          NIX_DEBUG = 7;
+
+          meta.broken = false; # we're unbreaking it... may need to upstream it.
+        });
         openstarbound = pkgs.stdenv.mkDerivation rec {
           pname = "openstarbound";
           version = "1.4.4";
@@ -50,9 +78,9 @@
             libpng
             freetype
             libvorbis
-            libopus
             re2
             libcpr
+            jemalloc
 
             sdl3
             glew
@@ -61,15 +89,21 @@
             libxmu
             libGL
             libGLU
-            imgui
 
             cpptrace
 
             python3Packages.jinja2
+            
+            self.packages.${system}.libopus
+            self.packages.${system}.imgui
           ];
+
+          hardeningDisable = [ "format" ];
 
           cmakeFlags = [
             "-S ${src}/source"
+            "-DSTAR_ENABLE_STATIC_LIBGCC_LIBSTDCXX=ON"
+            "-DSTAR_USE_JEMALLOC=ON"
             "-DSTAR_ENABLE_STEAM_INTEGRATION=OFF" # Disable Steam by default
           ];
 
