@@ -15,46 +15,67 @@
       };
     in
     {
-      overlays.default = final: prev: {
-        libopus = prev.stdenv.mkDerivation rec {
+      packages.${system} = rec {
+        libopus = pkgs.stdenv.mkDerivation rec {
           pname = "libopus";
           version = "1.5.2";
-          src = prev.fetchurl {
+          src = pkgs.fetchurl {
             url = "https://downloads.xiph.org/releases/opus/opus-${version}.tar.gz";
-            hash = "sha256-nMa1PBxq5LbMSBKlMFBMNFBFGsA1CKUK7pKpPCFHMM=";
+            hash = "sha256-ZcHS94ufL7IAgsOMvkfJUa1YOTRYduRpQWEu6H+afOE=";
           };
-          nativeBuildInputs = [ prev.cmake ];
+          nativeBuildInputs = [ pkgs.cmake ];
           cmakeFlags = [
             "-DOPUS_BUILD_SHARED_LIBRARY=ON"
             "-DOPUS_INSTALL_PKG_CONFIG_MODULE=ON"
             "-DOPUS_INSTALL_CMAKE_CONFIG_MODULE=ON" # nixpkgs libopus doesn't do this?
           ];
         };
-      };
+        imgui = pkgs.imgui.overrideAttrs (final: prev: rec {
+          version = "1.91.9b";
+          src = pkgs.fetchFromGitHub {
+            owner = "ocornut";
+            repo = "imgui";
+            tag = "v${version}";
+            hash = "sha256-dkukDP0HD8CHC2ds0kmqy7KiGIh4148hMCyA1QF3IMo=";
+          };
 
-      packages.${system} = {
-        openstarbound = pkgs.stdenv.mkDerivation {
+          buildInputs = with pkgs; (prev.buildInputs or []) ++ [
+            sdl3
+            freetype
+          ];
+
+          propagatedBuildInputs = with pkgs; (prev.propagatedBuildInputs or []) ++ [
+            sdl3
+            freetype
+          ];
+
+          preConfigure = ''
+            substituteInPlace ./CMakeLists.txt \
+              --replace-fail "find_package(freetype CONFIG REQUIRED)" "find_package(Freetype REQUIRED)"
+          '';
+
+          FREETYPE_DIR="${pkgs.freetype.dev}";
+          FREETYPE_INCLUDE_DIR_ft2build="${pkgs.freetype.dev}/include";
+          FREETYPE_INCLUDE_DIR_freetype2="${pkgs.freetype.dev}/include/freetype2";
+
+          cmakeFlags = [
+            "--debug-find"
+            "-DIMGUI_FREETYPE=ON"
+            "-DIMGUI_BUILD_SDL3_BINDING=ON"
+            "-DIMGUI_BUILD_OPENGL3_BINDING=ON"
+          ];
+
+          # NIX_DEBUG = 7;
+
+          meta.broken = false; # we're unbreaking it... may need to upstream it.
+        });
+        openstarbound = pkgs.stdenv.mkDerivation rec {
           pname = "openstarbound";
           version = "1.4.4";
 
-          src = pkgs.fetchFromGitHub {
-            owner = "OpenStarbound";
-            repo = "OpenStarbound";
-            rev = "main";
-            sha256 = "sha256-Sk2kHgIoBK0MgDDZyneBP9DUEkAiUdRB9a0uqrE/vqs=";
-          };
-
-          # patches = (
-          #   pkgs.writeText "cmake-fixes.patch" ''
-          #     --- a/source/CMakeLists.txt
-          #     +++ b/source/CMakeLists.txt
-          #     @@ -368,7 +368,7 @@
-          #     -find_package(Opus CONFIG REQUIRED)
-          #     +find_package(PkgConfig REQUIRED)
-          #     +pkg_check_modules(Opus REQUIRED IMPORTED_TARGET opus)
-          #     +add_library(Opus::opus ALIAS PkgConfig::Opus)
-          #   ''
-          # );
+          src = pkgs.nix-gitignore.gitignoreSource [
+            "cmake/FindGLEW.cmake" # causes resolution issues, not needed
+          ] ./.;
 
           nativeBuildInputs = with pkgs; [
             cmake
@@ -68,9 +89,9 @@
             libpng
             freetype
             libvorbis
-            libopus
             re2
             libcpr
+            jemalloc
 
             sdl3
             glew
@@ -79,35 +100,31 @@
             libxmu
             libGL
             libGLU
-            imgui
 
             cpptrace
 
             python3Packages.jinja2
+            
+            self.packages.${system}.libopus
+            self.packages.${system}.imgui
           ];
 
+          hardeningDisable = [ "format" ];
+
           cmakeFlags = [
+            "-S ${src}/source"
+            "-DSTAR_ENABLE_STATIC_LIBGCC_LIBSTDCXX=ON"
+            "-DSTAR_USE_JEMALLOC=ON"
             "-DSTAR_ENABLE_STEAM_INTEGRATION=OFF" # Disable Steam by default
           ];
 
-          sourceRoot = "source/source";
-
           postInstall = ''
-            mkdir -p $out/bin
-            mkdir -p $out/share/openstarbound
+            install -D $src/dist/* $out/share/openstarbound/
+            install -D $src/lib/linux/*.so $out/share/openstarbound/
+            install -D $src/scripts/linux/sbinit.config $out/share/openstarbound/
 
-            cp -r ../dist/* $out/share/openstarbound/
-            cp -r ../lib/linux/*.so $out/share/openstarbound/ || true
-
-            cp -r ../scripts/linux/sbinit.config $out/share/openstarbound/ || true
-
-            cat > $out/bin/openstarbound << EOF
-            #!/bin/sh
-            cd $out/share/openstarbound
-            exec ./starbound "\$@"
-            EOF
-
-            chmod +x $out/bin/openstarbound
+            wrapProgram $out/starbound \
+              --chdir $out/share/openstarbound/            
           '';
 
           meta = with pkgs.lib; {
