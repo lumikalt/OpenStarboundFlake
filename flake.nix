@@ -39,22 +39,33 @@
             hash = "sha256-dkukDP0HD8CHC2ds0kmqy7KiGIh4148hMCyA1QF3IMo=";
           };
 
+          buildInputs = with pkgs; (prev.buildInputs or []) ++ [
+            sdl3
+            freetype
+          ];
+
           propagatedBuildInputs = with pkgs; (prev.propagatedBuildInputs or []) ++ [
             sdl3
             freetype
           ];
 
-          preBuild = ''
-            addToSearchPath CMAKE_PREFIX_PATH ${pkgs.freetype.dev}
+          preConfigure = ''
+            substituteInPlace ./CMakeLists.txt \
+              --replace-fail "find_package(freetype CONFIG REQUIRED)" "find_package(Freetype REQUIRED)"
           '';
 
+          FREETYPE_DIR="${pkgs.freetype.dev}";
+          FREETYPE_INCLUDE_DIR_ft2build="${pkgs.freetype.dev}/include";
+          FREETYPE_INCLUDE_DIR_freetype2="${pkgs.freetype.dev}/include/freetype2";
+
           cmakeFlags = [
+            "--debug-find"
             "-DIMGUI_FREETYPE=ON"
             "-DIMGUI_BUILD_SDL3_BINDING=ON"
             "-DIMGUI_BUILD_OPENGL3_BINDING=ON"
           ];
 
-          NIX_DEBUG = 7;
+          # NIX_DEBUG = 7;
 
           meta.broken = false; # we're unbreaking it... may need to upstream it.
         });
