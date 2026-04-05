@@ -15,46 +15,28 @@
       };
     in
     {
-      overlays.default = final: prev: {
-        libopus = prev.stdenv.mkDerivation rec {
+      packages.${system} = rec {
+        libopus = pkgs.stdenv.mkDerivation rec {
           pname = "libopus";
           version = "1.5.2";
-          src = prev.fetchurl {
+          src = pkgs.fetchurl {
             url = "https://downloads.xiph.org/releases/opus/opus-${version}.tar.gz";
-            hash = "sha256-nMa1PBxq5LbMSBKlMFBMNFBFGsA1CKUK7pKpPCFHMM=";
+            hash = "sha256-ZcHS94ufL7IAgsOMvkfJUa1YOTRYduRpQWEu6H+afOE=";
           };
-          nativeBuildInputs = [ prev.cmake ];
+          nativeBuildInputs = [ pkgs.cmake ];
           cmakeFlags = [
             "-DOPUS_BUILD_SHARED_LIBRARY=ON"
             "-DOPUS_INSTALL_PKG_CONFIG_MODULE=ON"
             "-DOPUS_INSTALL_CMAKE_CONFIG_MODULE=ON" # nixpkgs libopus doesn't do this?
           ];
         };
-      };
-
-      packages.${system} = {
-        openstarbound = pkgs.stdenv.mkDerivation {
+        openstarbound = pkgs.stdenv.mkDerivation rec {
           pname = "openstarbound";
           version = "1.4.4";
 
-          src = pkgs.fetchFromGitHub {
-            owner = "OpenStarbound";
-            repo = "OpenStarbound";
-            rev = "main";
-            sha256 = "sha256-Sk2kHgIoBK0MgDDZyneBP9DUEkAiUdRB9a0uqrE/vqs=";
-          };
-
-          # patches = (
-          #   pkgs.writeText "cmake-fixes.patch" ''
-          #     --- a/source/CMakeLists.txt
-          #     +++ b/source/CMakeLists.txt
-          #     @@ -368,7 +368,7 @@
-          #     -find_package(Opus CONFIG REQUIRED)
-          #     +find_package(PkgConfig REQUIRED)
-          #     +pkg_check_modules(Opus REQUIRED IMPORTED_TARGET opus)
-          #     +add_library(Opus::opus ALIAS PkgConfig::Opus)
-          #   ''
-          # );
+          src = pkgs.nix-gitignore.gitignoreSource [
+            "cmake/FindGLEW.cmake" # causes resolution issues, not needed
+          ] ./.;
 
           nativeBuildInputs = with pkgs; [
             cmake
@@ -87,27 +69,17 @@
           ];
 
           cmakeFlags = [
+            "-S ${src}/source"
             "-DSTAR_ENABLE_STEAM_INTEGRATION=OFF" # Disable Steam by default
           ];
 
-          sourceRoot = "source/source";
-
           postInstall = ''
-            mkdir -p $out/bin
-            mkdir -p $out/share/openstarbound
+            install -D $src/dist/* $out/share/openstarbound/
+            install -D $src/lib/linux/*.so $out/share/openstarbound/
+            install -D $src/scripts/linux/sbinit.config $out/share/openstarbound/
 
-            cp -r ../dist/* $out/share/openstarbound/
-            cp -r ../lib/linux/*.so $out/share/openstarbound/ || true
-
-            cp -r ../scripts/linux/sbinit.config $out/share/openstarbound/ || true
-
-            cat > $out/bin/openstarbound << EOF
-            #!/bin/sh
-            cd $out/share/openstarbound
-            exec ./starbound "\$@"
-            EOF
-
-            chmod +x $out/bin/openstarbound
+            wrapProgram $out/starbound \
+              --chdir $out/share/openstarbound/            
           '';
 
           meta = with pkgs.lib; {

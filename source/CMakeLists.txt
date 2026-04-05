@@ -528,7 +528,7 @@ if(STAR_BUILD_GUI)
   include_directories(SYSTEM ${GLEW_INCLUDE_DIR})
   set(STAR_EXT_GUI_LIBS ${STAR_EXT_GUI_LIBS}
       ${OPENGL_LIBRARY}
-      GLEW::glew_s
+      GLEW::GLEW
   )
 
   if(STAR_SYSTEM_MACOS)
